@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  nats:
+    image: nats-streaming:latest
+    container_name: nats
+    restart: always
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+      - "6222:6222"
+    command: ["-p", "4222", "-m", "8222", "--cluster_id", "${NATS_CLUSTER_ID}"]
+
+  service:
+    build:
+      context: ./service
+      dockerfile: Dockerfile
+    container_name: service
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "${PORT}:${PORT}"
+    depends_on:
+      - postgres
+      - nats
+
+  publisher:
+    build:
+      context: ./publisher
+      dockerfile: Dockerfile
+    container_name: publisher
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+    depends_on:
+      - nats
+      - service
+
+  frontend:
+    image: nginx:latest
+    container_name: frontend
+    restart: always
+    ports:
+      - "9090:80"   # тут меняем порт на 9090
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - service
+
+
+
+volumes:
+  pgdata:
